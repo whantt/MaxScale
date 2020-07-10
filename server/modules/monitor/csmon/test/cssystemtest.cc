@@ -194,7 +194,7 @@ private:
     std::string m_path;
 };
 
-const char ZBASE_PATH[] = "/cmapi/0.3.0/node";
+const char ZBASE_PATH[] = "/cmapi/0.4.0/node";
 const char ZPORT[] = "8640";
 
 unique_ptr<json_t> load_json(const string& json)
@@ -363,6 +363,41 @@ int can_start_and_shutdown_cluster(CSTest& cs, MaxCtrl& maxctrl)
     return 0;
 }
 
+string to_string(json_t* pValue)
+{
+    switch (json_typeof(pValue))
+    {
+    case JSON_OBJECT:
+        return "{...}";
+    case JSON_ARRAY:
+        return "[...]";
+    case JSON_STRING:
+        return json_string_value(pValue);
+    case JSON_INTEGER:
+        return std::to_string(json_integer_value(pValue));
+    case JSON_REAL:
+        return std::to_string(json_real_value(pValue));
+    case JSON_TRUE:
+        return "TRUE";
+    case JSON_FALSE:
+        return "FALSE";
+    case JSON_NULL:
+        return "NULL";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+void dump(json_t* pJson)
+{
+    const char *key;
+    json_t *value;
+
+    json_object_foreach(pJson, key, value) {
+        cout << key << ": " << to_string(value) << endl;
+    }
+}
+
 int compare_returned_statuses(CSTest& cs, MaxCtrl& maxctrl)
 {
     auto response = cs.get_status_response();
@@ -370,13 +405,32 @@ int compare_returned_statuses(CSTest& cs, MaxCtrl& maxctrl)
     REQUIRE("status returns 1 row", rows.size() == 1);
 
     auto sStatus1 = load_json(response.body);
+    json_object_del(sStatus1.get(), "timestamp"); // The timestamp will be different, so we drop it.
+    json_object_del(sStatus1.get(), "uptime"); // The uptime will be different, so we drop it.
+
     auto sResult = load_json(rows.front());
     auto pMeta = json_object_get(sResult.get(), "meta");
     auto pServers = json_object_get(pMeta, "servers");
     REQUIRE("Result from one server returned.", json_array_size(pServers) == 1);
-    auto pStatus2 = json_array_get(pServers, 0);
+    auto pServer = json_array_get(pServers, 0);
+    auto pStatus2 = json_object_get(pServer, "result");
+    json_object_del(pStatus2, "timestamp");  // The timestamp will be different, so we drop it.
+    json_object_del(pStatus2, "csmon_trx_active"); // Only MaxScale return object may have this.
+    json_object_del(pStatus2, "uptime"); // The uptime will be different, so we drop it.
 
-    return json_equal(sStatus1.get(), pStatus2) == 1 ? 0 : 1;
+    bool rv = json_equal(sStatus1.get(), pStatus2) == 1 ? 0 : 1;
+
+    if (rv != 0)
+    {
+        cout << "sStatus1" << endl;
+        dump(sStatus1.get());
+
+        cout << endl;
+        cout << "pStatus1" << endl;
+        dump(pStatus2);
+    }
+
+    return rv;
 }
 
 int can_maxscale_return_status(CSTest& cs, MaxCtrl& maxctrl)
