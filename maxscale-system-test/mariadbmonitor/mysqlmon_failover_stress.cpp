@@ -557,7 +557,7 @@ void run(TestConnections& test)
                 test.set_timeout(20);
                 test.maxscales->wait_for_monitor();
                 cout << "\nStarting node: " << master_id << endl;
-                test.repl->start_node(master_id - 1);
+                test.repl->start_node(master_id - 1, "--tc-heuristic-recover=ROLLBACK");
 
                 test.maxscales->wait_for_monitor();
                 list_servers(test);
@@ -604,10 +604,10 @@ int main(int argc, char* argv[])
     test.maxscales->start_maxscale();
 
     test.maxscales->wait_for_monitor(2);
+    test.repl->connect();
     char value[10] {0};
     int ret = find_field(test.repl->nodes[0], "show status like 'Rpl_semi_sync_master_clients'", "Value", value);
     test.expect(ret == 0, "query failed");
-    test.try_query()
     cout << "Semisync slaves " << value << "\n";
     test.expect(*value == '3', "Incorrect number of semisync slaves (%s)", value);
     if (test.ok())
