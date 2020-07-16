@@ -589,7 +589,34 @@ int main(int argc, char* argv[])
     Mariadb_nodes::require_gtid(true);
     TestConnections test(argc, argv);
 
-    run(test);
+    // Enable semisync replication on all backends.
+    auto n_servers = test.repl->N;
+    for (int i = 0; i < n_servers; i++)
+    {
+        test.repl->stop_node(i);
+        test.repl->stash_server_settings(i);
+        test.repl->add_server_setting(i, "rpl_semi_sync_master_enabled=ON");
+        test.repl->add_server_setting(i, "rpl_semi_sync_slave_enabled=ON");
+        test.repl->add_server_setting(i, "rpl_semi_sync_master_wait_point=AFTER_SYNC");
+        test.repl->start_node(i);
+    }
 
+    test.maxscales->wait_for_monitor(2);
+    char value[10] {0};
+    find_field(test.repl->nodes[0], "show status like 'Rpl_semi_sync_master_clients'", "Value", value);
+    cout << "Semisync slaves " << value << "\n";
+    test.expect(*value == '3', "Incorrect number of semisync slaves (%s)", value);
+    if (test.ok())
+    {
+        run(test);
+    }
+
+    // Disable semisync.
+    for (int i = 0; i < n_servers; i++)
+    {
+        test.repl->stop_node(i);
+        test.repl->reset_server_settings(i);
+        test.repl->start_node(i);
+    }
     return test.global_result;
 }
