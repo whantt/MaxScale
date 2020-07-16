@@ -605,7 +605,9 @@ int main(int argc, char* argv[])
 
     test.maxscales->wait_for_monitor(2);
     char value[10] {0};
-    find_field(test.repl->nodes[0], "show status like 'Rpl_semi_sync_master_clients'", "Value", value);
+    int ret = find_field(test.repl->nodes[0], "show status like 'Rpl_semi_sync_master_clients'", "Value", value);
+    test.expect(ret == 0, "query failed");
+    test.try_query()
     cout << "Semisync slaves " << value << "\n";
     test.expect(*value == '3', "Incorrect number of semisync slaves (%s)", value);
     if (test.ok())
@@ -613,6 +615,7 @@ int main(int argc, char* argv[])
         run(test);
     }
 
+    test.maxscales->stop_maxscale();
     // Disable semisync.
     for (int i = 0; i < n_servers; i++)
     {
