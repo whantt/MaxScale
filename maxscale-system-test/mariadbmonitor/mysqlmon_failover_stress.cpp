@@ -590,6 +590,7 @@ int main(int argc, char* argv[])
     TestConnections test(argc, argv);
 
     // Enable semisync replication on all backends.
+    test.maxscales->stop_maxscale();
     auto n_servers = test.repl->N;
     for (int i = 0; i < n_servers; i++)
     {
@@ -600,6 +601,7 @@ int main(int argc, char* argv[])
         test.repl->add_server_setting(i, "rpl_semi_sync_master_wait_point=AFTER_SYNC");
         test.repl->start_node(i);
     }
+    test.maxscales->start_maxscale();
 
     test.maxscales->wait_for_monitor(2);
     char value[10] {0};
