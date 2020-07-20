@@ -280,11 +280,6 @@ void Error::clear()
     m_message.clear();
 }
 
-ReplyState Reply::state() const
-{
-    return m_reply_state;
-}
-
 std::string Reply::to_string() const
 {
     switch (m_reply_state)
@@ -311,122 +306,6 @@ std::string Reply::to_string() const
         mxb_assert(!true);
         return "UNKNOWN";
     }
-}
-
-uint8_t Reply::command() const
-{
-    return m_command;
-}
-
-const Error& Reply::error() const
-{
-    return m_error;
-}
-
-bool Reply::is_complete() const
-{
-    return m_reply_state == ReplyState::DONE;
-}
-
-bool Reply::has_started() const
-{
-    return m_reply_state != ReplyState::START && m_reply_state != ReplyState::DONE;
-}
-
-bool Reply::is_resultset() const
-{
-    return !m_field_counts.empty();
-}
-
-bool Reply::is_ok() const
-{
-    return m_is_ok && !is_resultset() && !error();
-}
-
-uint64_t Reply::rows_read() const
-{
-    return m_row_count;
-}
-
-uint16_t Reply::num_warnings() const
-{
-    return m_num_warnings;
-}
-
-uint64_t Reply::size() const
-{
-    return m_size;
-}
-
-const std::vector<uint64_t>& Reply::field_counts() const
-{
-    return m_field_counts;
-}
-
-uint32_t Reply::generated_id() const
-{
-    return m_generated_id;
-}
-
-uint16_t Reply::param_count() const
-{
-    return m_param_count;
-}
-
-std::string Reply::get_variable(const std::string& name) const
-{
-    auto it = m_variables.find(name);
-    return it != m_variables.end() ? it->second : "";
-}
-
-void Reply::set_command(uint8_t command)
-{
-    m_command = command;
-}
-
-void Reply::set_reply_state(mxs::ReplyState state)
-{
-    m_reply_state = state;
-}
-
-void Reply::add_rows(uint64_t row_count)
-{
-    m_row_count += row_count;
-}
-
-void Reply::add_bytes(uint64_t size)
-{
-    m_size = size;
-}
-
-void Reply::add_field_count(uint64_t field_count)
-{
-    m_field_counts.push_back(field_count);
-}
-
-void Reply::set_generated_id(uint32_t id)
-{
-    m_generated_id = id;
-}
-
-void Reply::set_param_count(uint16_t count)
-{
-    m_param_count = count;
-}
-
-void Reply::set_is_ok(bool is_ok)
-{
-    m_is_ok = is_ok;
-}
-
-void Reply::set_variable(const std::string& key, const std::string& value)
-{
-    m_variables.insert(std::make_pair(key, value));
-}
-
-void Reply::set_num_warnings(uint16_t warnings)
-{
-    m_num_warnings = warnings;
 }
 
 void Reply::clear()

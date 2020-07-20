@@ -517,7 +517,10 @@ public:
     /**
      * Get the current state
      */
-    ReplyState state() const;
+    ReplyState state() const
+    {
+        return m_reply_state;
+    }
 
     /**
      * Get state in string form
@@ -527,7 +530,10 @@ public:
     /**
      * The command that the reply is for
      */
-    uint8_t command() const;
+    uint8_t command() const
+    {
+        return m_command;
+    }
 
     /**
      * Get latest error
@@ -536,28 +542,40 @@ public:
      *
      * @return The current error state.
      */
-    const Error& error() const;
+    const Error& error() const
+    {
+        return m_error;
+    }
 
     /**
      * Check whether the response from the server is complete
      *
      * @return True if no more results are expected from this server
      */
-    bool is_complete() const;
+    bool is_complete() const
+    {
+        return m_reply_state == ReplyState::DONE;
+    }
 
     /**
      * Check if a partial response has been received from the backend
      *
      * @return True if some parts of the reply have been received
      */
-    bool has_started() const;
+    bool has_started() const
+    {
+        return m_reply_state != ReplyState::START && m_reply_state != ReplyState::DONE;
+    }
 
     /**
      * Is the reply a resultset?
      *
      * @return True if the reply is a resultset
      */
-    bool is_resultset() const;
+    bool is_resultset() const
+    {
+        return !m_field_counts.empty();
+    }
 
     /**
      * Does the current reply consist of only OK packets?
@@ -566,37 +584,58 @@ public:
      *
      * @return True if the current reply consists of only OK packets
      */
-    bool is_ok() const;
+    bool is_ok() const
+    {
+        return m_is_ok && !is_resultset() && !error();
+    }
 
     /**
      * Number of rows read from the result
      */
-    uint64_t rows_read() const;
+    uint64_t rows_read() const
+    {
+        return m_row_count;
+    }
 
     /**
      * Number of warnings returned
      */
-    uint16_t num_warnings() const;
+    uint16_t num_warnings() const
+    {
+        return m_num_warnings;
+    }
 
     /**
      * Number of bytes received
      */
-    uint64_t size() const;
+    uint64_t size() const
+    {
+        return m_size;
+    }
 
     /**
      * The field counts for all received result sets
      */
-    const std::vector<uint64_t>& field_counts() const;
+    const std::vector<uint64_t>& field_counts() const
+    {
+        return m_field_counts;
+    }
 
     /**
      * The server-generated ID for a prepared statement if one was created
      */
-    uint32_t generated_id() const;
+    uint32_t generated_id() const
+    {
+        return m_generated_id;
+    }
 
     /**
      * The number of input parameters the prepared statement has
      */
-    uint16_t param_count() const;
+    uint16_t param_count() const
+    {
+        return m_param_count;
+    }
 
     /**
      * System variable state changes returned by the server
@@ -605,31 +644,65 @@ public:
      *
      * @return The variable value or an empty string if the variable was not set
      */
-    std::string get_variable(const std::string& name) const;
+    std::string get_variable(const std::string& name) const
+    {
+        auto it = m_variables.find(name);
+        return it != m_variables.end() ? it->second : "";
+    }
 
     //
     // Setters
     //
 
-    void set_command(uint8_t command);
+    void set_command(uint8_t command)
+    {
+        m_command = command;
+    }
 
-    void set_reply_state(mxs::ReplyState state);
+    void set_reply_state(mxs::ReplyState state)
+    {
+        m_reply_state = state;
+    }
 
-    void add_rows(uint64_t row_count);
+    void add_rows(uint64_t row_count)
+    {
+        m_row_count += row_count;
+    }
 
-    void add_bytes(uint64_t size);
+    void add_bytes(uint64_t size)
+    {
+        m_size = size;
+    }
 
-    void add_field_count(uint64_t field_count);
+    void add_field_count(uint64_t field_count)
+    {
+        m_field_counts.push_back(field_count);
+    }
 
-    void set_generated_id(uint32_t id);
+    void set_generated_id(uint32_t id)
+    {
+        m_generated_id = id;
+    }
 
-    void set_param_count(uint16_t id);
+    void set_param_count(uint16_t count)
+    {
+        m_param_count = count;
+    }
 
-    void set_is_ok(bool is_ok);
+    void set_is_ok(bool is_ok)
+    {
+        m_is_ok = is_ok;
+    }
 
-    void set_variable(const std::string& key, const std::string& value);
+    void set_variable(const std::string& key, const std::string& value)
+    {
+        m_variables.insert(std::make_pair(key, value));
+    }
 
-    void set_num_warnings(uint16_t warnings);
+    void set_num_warnings(uint16_t warnings)
+    {
+        m_num_warnings = warnings;
+    }
 
     void clear();
 
