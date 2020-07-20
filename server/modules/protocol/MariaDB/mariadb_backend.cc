@@ -120,7 +120,7 @@ void skip_encoded_str(Iter& it)
     it.advance(len);
 }
 
-bool is_last_eof(Iter it)
+inline bool is_last_eof(Iter it)
 {
     std::advance(it, 3);    // Skip the command byte and warning count
     uint16_t status = *it++;
@@ -1789,7 +1789,82 @@ GWBUF* MariaDBBackendConnection::process_packets(GWBUF** result)
 
         if (!skip_next)
         {
-            process_one_packet(it, end, len);
+            uint8_t cmd = *it;
+            switch (m_reply.state())
+            {
+            case ReplyState::START:
+                process_reply_start(it, end);
+                break;
+
+            case ReplyState::DONE:
+                if (cmd == MYSQL_REPLY_ERR)
+                {
+                    update_error(++it, end);
+                }
+                else
+                {
+                    // This should never happen
+                    MXS_ERROR("Unexpected result state. cmd: 0x%02hhx, len: %u server: %s",
+                              cmd, len, m_server.name());
+                    session_dump_statements(m_session);
+                    session_dump_log(m_session);
+                    mxb_assert(!true);
+                }
+                break;
+
+            case ReplyState::RSET_COLDEF:
+                mxb_assert(m_num_coldefs > 0);
+                --m_num_coldefs;
+
+                if (m_num_coldefs == 0)
+                {
+                    set_reply_state(ReplyState::RSET_COLDEF_EOF);
+                    // Skip this state when DEPRECATE_EOF capability is supported
+                }
+                break;
+
+            case ReplyState::RSET_COLDEF_EOF:
+                mxb_assert(cmd == MYSQL_REPLY_EOF && len == MYSQL_EOF_PACKET_LEN - MYSQL_HEADER_LEN);
+                set_reply_state(ReplyState::RSET_ROWS);
+
+                if (m_opening_cursor)
+                {
+                    m_opening_cursor = false;
+                    MXS_INFO("Cursor successfully opened");
+                    set_reply_state(ReplyState::DONE);
+                }
+                break;
+
+            case ReplyState::RSET_ROWS:
+                if (cmd == MYSQL_REPLY_EOF && len == MYSQL_EOF_PACKET_LEN - MYSQL_HEADER_LEN)
+                {
+                    set_reply_state(is_last_eof(it) ? ReplyState::DONE : ReplyState::START);
+
+                    ++it;
+                    uint16_t warnings = *it++;
+                    warnings |= *it << 8;
+
+                    m_reply.set_num_warnings(warnings);
+                }
+                else if (cmd == MYSQL_REPLY_ERR)
+                {
+                    ++it;
+                    update_error(it, end);
+                    set_reply_state(ReplyState::DONE);
+                }
+                else
+                {
+                    m_reply.add_rows(1);
+                }
+                break;
+
+            case ReplyState::PREPARE:
+                if (--m_ps_packets == 0)
+                {
+                    set_reply_state(ReplyState::DONE);
+                }
+                break;
+            }
         }
 
         it = end;
@@ -1797,86 +1872,6 @@ GWBUF* MariaDBBackendConnection::process_packets(GWBUF** result)
 
     buffer.release();
     return gwbuf_split(result, bytes_used);
-}
-
-void MariaDBBackendConnection::process_one_packet(Iter it, Iter end, uint32_t len)
-{
-    uint8_t cmd = *it;
-    switch (m_reply.state())
-    {
-    case ReplyState::START:
-        process_reply_start(it, end);
-        break;
-
-    case ReplyState::DONE:
-        if (cmd == MYSQL_REPLY_ERR)
-        {
-            update_error(++it, end);
-        }
-        else
-        {
-            // This should never happen
-            MXS_ERROR("Unexpected result state. cmd: 0x%02hhx, len: %u server: %s",
-                      cmd, len, m_server.name());
-            session_dump_statements(m_session);
-            session_dump_log(m_session);
-            mxb_assert(!true);
-        }
-        break;
-
-    case ReplyState::RSET_COLDEF:
-        mxb_assert(m_num_coldefs > 0);
-        --m_num_coldefs;
-
-        if (m_num_coldefs == 0)
-        {
-            set_reply_state(ReplyState::RSET_COLDEF_EOF);
-            // Skip this state when DEPRECATE_EOF capability is supported
-        }
-        break;
-
-    case ReplyState::RSET_COLDEF_EOF:
-        mxb_assert(cmd == MYSQL_REPLY_EOF && len == MYSQL_EOF_PACKET_LEN - MYSQL_HEADER_LEN);
-        set_reply_state(ReplyState::RSET_ROWS);
-
-        if (m_opening_cursor)
-        {
-            m_opening_cursor = false;
-            MXS_INFO("Cursor successfully opened");
-            set_reply_state(ReplyState::DONE);
-        }
-        break;
-
-    case ReplyState::RSET_ROWS:
-        if (cmd == MYSQL_REPLY_EOF && len == MYSQL_EOF_PACKET_LEN - MYSQL_HEADER_LEN)
-        {
-            set_reply_state(is_last_eof(it) ? ReplyState::DONE : ReplyState::START);
-
-            ++it;
-            uint16_t warnings = *it++;
-            warnings |= *it << 8;
-
-            m_reply.set_num_warnings(warnings);
-        }
-        else if (cmd == MYSQL_REPLY_ERR)
-        {
-            ++it;
-            update_error(it, end);
-            set_reply_state(ReplyState::DONE);
-        }
-        else
-        {
-            m_reply.add_rows(1);
-        }
-        break;
-
-    case ReplyState::PREPARE:
-        if (--m_ps_packets == 0)
-        {
-            set_reply_state(ReplyState::DONE);
-        }
-        break;
-    }
 }
 
 void MariaDBBackendConnection::process_ok_packet(Iter it, Iter end)
@@ -2016,7 +2011,7 @@ void MariaDBBackendConnection::process_ps_response(Iter it, Iter end)
     set_reply_state(m_ps_packets == 0 ? ReplyState::DONE : ReplyState::PREPARE);
 }
 
-void MariaDBBackendConnection::process_reply_start(Iter it, Iter end)
+inline void MariaDBBackendConnection::process_reply_start(Iter it, Iter end)
 {
     if (m_reply.command() == MXS_COM_BINLOG_DUMP)
     {
@@ -2039,7 +2034,7 @@ void MariaDBBackendConnection::process_reply_start(Iter it, Iter end)
     }
 }
 
-void MariaDBBackendConnection::process_result_start(Iter it, Iter end)
+inline void MariaDBBackendConnection::process_result_start(Iter it, Iter end)
 {
     uint8_t cmd = *it;
 
@@ -2199,7 +2194,7 @@ BackendDCB* MariaDBBackendConnection::dcb()
     return m_dcb;
 }
 
-void MariaDBBackendConnection::set_reply_state(mxs::ReplyState state)
+inline void MariaDBBackendConnection::set_reply_state(mxs::ReplyState state)
 {
     m_reply.set_reply_state(state);
 }
