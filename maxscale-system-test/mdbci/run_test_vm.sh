@@ -1,24 +1,23 @@
 #!/bin/bash
 
-export dir=`pwd`
-
-ulimit -n
-
 # read the name of build scripts directory
 export script_dir="$(dirname $(readlink -f $0))"
 
 rm -rf LOGS
 
+export curr_date=`date '+%Y-%m-%d_%H-%M'`
+export mdbci_config_name=${name:-$box-${curr_date}}
 export mdbci_config_name=`echo ${mdbci_config_name} | sed "s/?//g"`
+export MDBCI_VM_PATH=$HOME/${mdbci_config_name}_vms
+export PATH=$PATH:$HOME/mdbci
 
+. ./${script_dir}/set_run_test_variables.sh
 
+export name=$mdbci_config_name
 
 # prepare separate dir for MDBCI vms
 rm -rf $HOME/${mdbci_config_name}_vms
 mkdir -p $HOME/${mdbci_config_name}_vms
-
-export MDBCI_VM_PATH=$HOME/${mdbci_config_name}_vms
-export PATH=$PATH:$HOME/mdbci
 
 export provider=`mdbci show provider $box --silent 2> /dev/null`
 export backend_box=${backend_box:-"centos_7_"$provider}
@@ -26,20 +25,20 @@ export backend_box=${backend_box:-"centos_7_"$provider}
 mdbci destroy test_vm
 
 cp ${script_dir}/test_vm.json $HOME/${mdbci_config_name}_vms/
-test_vm_box="ubuntu_bionc_"$provider
+test_vm_box="ubuntu_bionic_"$provider
 me=`whoami`
-sed -i $HOME/${mdbci_config_name}_vms/test_vm.json "s/###test_vm_box###/${test_vm_box}/"
-sed -i $HOME/${mdbci_config_name}_vms/test_vm.json "s/###test_vm_user###/${me}/"
+sed -i "s/###test_vm_box###/${test_vm_box}/"  $HOME/${mdbci_config_name}_vms/test_vm.json 
+sed -i "s/###test_vm_user###/${me}/" $HOME/${mdbci_config_name}_vms/test_vm.json
 
 mdbci generate test_vm --template test_vm.json --override
 mdbci up test_vm
 
-ip=`mdbci show network --silent ub`
-key=`mdbci show keyfile --silent ub`
+ip=`mdbci show network --silent test_vm`
+key=`mdbci show keyfile --silent test_vm`
 sshopt="-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ConnectTimeout=120  "
 
 
-ssh -i $key $sshopt $me@$ip "mkdir -p .ssh; mkdir -p ${MDBCI_VM_PATH}; mkdir mdbci"
+ssh -i $key $sshopt $me@$ip "mkdir -p .ssh; mkdir -p ${MDBCI_VM_PATH}; mkdir -p mdbci; mkdir -p MaxScale"
 scp -i $key $sshopt -r ${script_dir}/../../* $me@$ip:~/MaxScale/
 
 scp -i $key $sshopt $HOME/.config/mdbci/max-tst.key $me@$ip:~/.ssh/id_rsa
@@ -47,10 +46,13 @@ ssh -i $key $sshopt $me@$ip "chmod 400 .ssh/id_rsa"
 scp -i $key $sshopt ${script_dir}/mdbci_wrapper $me@$ip:~/mdbci/mdbci
 ssh -i $key $sshopt $me@$ip "chmod +x mdbci/mdbci"
 
-ssh -i $key $sshopt $me@$ip "echo export MDBCI_VM_PATH=${MDBCI_VM_PATH} > test_env"
-ssh -i $key $sshopt $me@$ip "echo export PATH=\$PATH:\$HOME/mdbci >> test_env"
+echo export MDBCI_VM_PATH=${MDBCI_VM_PATH} > test_env
+echo export PATH=\$PATH:\$HOME/mdbci >> test_env
+echo export host_user=$me  >> test_env
+my_ip=`ip route get 192.168.121.250 | head -1 | cut -d' ' -f5`
+echo export host_ip=${my_ip} >> test_env
 
-test_env_list = (
+test_env_list=(
     "WORKSPACE"
     "JOB_NAME"
     "BUILD_NUMBER"
@@ -73,29 +75,34 @@ test_env_list = (
     "test_branch"
     "use_valgrind"
     "use_callgrind"
-    "mdbci_config_name"
 )
 
 for s in ${test_env_list[@]} ; do
    eval "v=\$$s"
-   echo "export $s=$v" >> test_env
+   if [ -n "$v" ] ; then
+       echo "export $s=$v" >> test_env
+   fi
 done
 
 scp -i $key $sshopt test_env $me@$ip:~/
 
-ssh -i $key $sshopt $me@$ip ". ./test_env; ./MaxScale/maxscale-system-test/mdbci/run_test.sh"
+ssh -i $key $sshopt $me@$ip "sudo usermod --shell /bin/bash $me"
+ssh -i $key $sshopt $me@$ip "./MaxScale/BUILD/install_test_build_deps.sh"
+ssh -i $key $sshopt $me@$ip ". ./test_env; env; ./MaxScale/maxscale-system-test/mdbci/run_test.sh"
+
 
 . ${script_dir}/configure_log_dir.sh
-
-ulimit -c unlimited
-
+mkdir -p LOGS
+mkdir -p ${logs_publish_dir}
+scp -i $key $sshopt -r $me@$ip:./MaxScale/build/maxscale-system-test/LOGS/* LOGS/
 
 
 cp core.* ${logs_publish_dir}
 ${script_dir}/copy_logs.sh
-cd $dir
 
 if [ "${do_not_destroy_vm}" != "yes" ] ; then
 	mdbci destroy ${mdbci_config_name}
+        mdbci destroy test_vm
+        rm -rf $HOME/${mdbci_config_name}_vms
 	echo "clean up done!"
 fi
