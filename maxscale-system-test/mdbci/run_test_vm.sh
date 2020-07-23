@@ -11,7 +11,7 @@ export mdbci_config_name=`echo ${mdbci_config_name} | sed "s/?//g"`
 export MDBCI_VM_PATH=$HOME/${mdbci_config_name}_vms
 export PATH=$PATH:$HOME/mdbci
 
-. ./${script_dir}/set_run_test_variables.sh
+. ${script_dir}/set_run_test_variables.sh
 
 export name=$mdbci_config_name
 
