@@ -105,6 +105,6 @@ ${script_dir}/copy_logs.sh
 if [ "${do_not_destroy_vm}" != "yes" ] ; then
 	mdbci destroy ${mdbci_config_name}
         #mdbci destroy test_vm
-        rm -rf $HOME/${mdbci_config_name}_vms
+        #rm -rf $HOME/${mdbci_config_name}_vms
 	echo "clean up done!"
 fi
