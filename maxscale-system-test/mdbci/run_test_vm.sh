@@ -49,7 +49,7 @@ ssh -i $key $sshopt $me@$ip "chmod +x mdbci/mdbci"
 echo export MDBCI_VM_PATH=${MDBCI_VM_PATH} > test_env
 echo export PATH=\$PATH:\$HOME/mdbci >> test_env
 echo export host_user=$me  >> test_env
-my_ip=`ip route get 192.168.121.250 | head -1 | cut -d' ' -f5`
+my_ip=`ip route get $ip | egrep -o '([0-9]{1,3}\.){3}[0-9]{1,3}' | tail -1`
 echo export host_ip=${my_ip} >> test_env
 
 test_env_list=(
