@@ -80,9 +80,11 @@ test_env_list=(
 for s in ${test_env_list[@]} ; do
    eval "v=\$$s"
    if [ -n "$v" ] ; then
-       echo "export $s=$v" >> test_env
+       echo "export $s=\"$v\"" >> test_env
    fi
 done
+
+cat test_env
 
 scp -i $key $sshopt test_env $me@$ip:~/
 
@@ -102,7 +104,7 @@ ${script_dir}/copy_logs.sh
 
 if [ "${do_not_destroy_vm}" != "yes" ] ; then
 	mdbci destroy ${mdbci_config_name}
-        mdbci destroy test_vm
+        #mdbci destroy test_vm
         rm -rf $HOME/${mdbci_config_name}_vms
 	echo "clean up done!"
 fi
